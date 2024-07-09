@@ -1,0 +1,125 @@
+import CoreData
+
+class PersistenceController {
+    static let shared = PersistenceController()
+
+    let container: NSPersistentContainer
+
+    init(inMemory: Bool = false) {
+        container = NSPersistentContainer(name: "YourModelName")
+        if inMemory {
+            container.persistentStoreDescriptions.first?.url = URL(fileURLWithPath: "/dev/null")
+        }
+        container.loadPersistentStores { description, error in
+            if let error = error as NSError? {
+                fatalError("Unresolved error \(error), \(error.userInfo)")
+            }
+        }
+    }
+
+    var viewContext: NSManagedObjectContext {
+        return container.viewContext
+    }
+}
+
+
+import Foundation
+import CoreData
+import Combine
+
+class EventLoopManager: ObservableObject {
+    private var viewContext: NSManagedObjectContext
+    
+    init(viewContext: NSManagedObjectContext) {
+        self.viewContext = viewContext
+    }
+    
+    func fetchFiles() {
+        DispatchQueue.global().async {
+            // Simulate network fetch
+            let fetchedFiles = ["file1.txt", "file2.txt", "file3.txt"]
+            
+            DispatchQueue.main.async {
+                self.saveFiles(fetchedFiles)
+            }
+        }
+    }
+    
+    private func saveFiles(_ files: [String]) {
+        files.forEach { fileName in
+            let newFile = FileEntity(context: viewContext)
+            newFile.name = fileName
+        }
+        
+        do {
+            try viewContext.save()
+        } catch {
+            print("Failed to save files: \(error)")
+        }
+    }
+}
+
+@main
+struct YourApp: App {
+    let persistenceController = PersistenceController.shared
+
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+                .environment(\.managedObjectContext, persistenceController.viewContext)
+        }
+    }
+}
+
+import SwiftUI
+
+struct ContentView: View {
+    var body: some View {
+        NavigationView {
+            VStack {
+                NavigationLink(destination: LoginView()) {
+                    Text("Go to Login")
+                }
+            }
+        }
+    }
+}
+
+import SwiftUI
+
+struct LoginView: View {
+    @Environment(\.managedObjectContext) private var viewContext
+    @State private var navigateToFileList = false
+
+    var body: some View {
+        VStack {
+            Button("Login") {
+                let eventLoopManager = EventLoopManager(viewContext: viewContext)
+                eventLoopManager.fetchFiles()
+                navigateToFileList = true
+            }
+            NavigationLink(destination: FileListView(), isActive: $navigateToFileList) {
+                EmptyView()
+            }
+        }
+    }
+}
+
+import SwiftUI
+import CoreData
+
+struct FileListView: View {
+    @FetchRequest(
+        sortDescriptors: [NSSortDescriptor(keyPath: \FileEntity.name, ascending: true)],
+        animation: .default)
+    private var files: FetchedResults<FileEntity>
+
+    var body: some View {
+        List(files, id: \.self) { file in
+            Text(file.name ?? "Unknown")
+        }
+    }
+}
+
+
+
